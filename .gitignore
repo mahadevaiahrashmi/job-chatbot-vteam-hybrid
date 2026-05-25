@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Build output
+dist/
+build/
+out/
+target/
+*.o
+*.so
+*.dylib
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.yaml
+
+# Logs
+*.log
+logs/
+
+# Coverage and test output
+coverage/
+.nyc_output/
+htmlcov/
+.coverage
+*.lcov
+
+# OS files
+Desktop.ini
+ehthumbs.db
+
+# Claude Code machine-specific memory
+.claude/projects/
+
+# Package manager lockfiles (uncomment the one you DON'T use)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+# bun.lockb
