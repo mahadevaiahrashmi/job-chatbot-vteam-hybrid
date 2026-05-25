@@ -18,6 +18,23 @@ endpoint, deduplicates results, writes them to CSV + SQLite, and validates
 the output. There are four logical agents involved (CompanyConfirm,
 Scraper, DB, Tester), each with a single responsibility.
 
+## Tech stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| LLM client | `anthropic>=0.40` (Python SDK) | Orchestrator's tool-use loop. |
+| HTTP | `httpx>=0.27` | Workday client. |
+| CLI | `rich>=13.7` | REPL formatting. |
+| Config | `python-dotenv>=1.0` | `ANTHROPIC_API_KEY` from `.env`. |
+| Subprocess IPC | stdlib `subprocess` | Workers receive JSON on stdin and emit paths on stdout. The contract is plain bytes — workers can be rewritten in any language. |
+| Storage | stdlib `csv` + `sqlite3` | Inside the workers; no shared DB. |
+| Tests | `pytest>=8.0` (dev) | Offline; includes a real `subprocess` round-trip between `db_worker` and `tester_worker`. |
+| Build | `hatchling` | Minimal PEP 517 backend. |
+| Python | `>=3.11` | |
+| Template | `noodlefrenzy/vteam-hybrid` | Created via `gh repo create --template`. Provides `.claude/` agent personas, slash commands, and methodology docs — unrelated to the chatbot itself. |
+
+Model used: `claude-haiku-4-5-20251001`. The "hybrid" name refers to the in-process / subprocess split — see the next section.
+
 ## Why a hybrid architecture
 
 The four agents do not all have the same shape. Two of them (CompanyConfirm
