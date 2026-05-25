@@ -56,3 +56,8 @@ ehthumbs.db
 # yarn.lock
 # pnpm-lock.yaml
 # bun.lockb
+
+# job-chatbot additions
+output/*.csv
+output/*.db
+output/*.sqlite

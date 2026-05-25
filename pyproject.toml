@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "job-chatbot-vteam-hybrid"
+version = "0.1.0"
+description = "Multi-agent job-search chatbot on the vteam-hybrid template."
+readme = "README-AGENTS.md"
+requires-python = ">=3.11"
+authors = [{ name = "Rashmi Mahadevaiah" }]
+license = { text = "MIT" }
+dependencies = [
+    "anthropic>=0.40.0",
+    "httpx>=0.27.0",
+    "rich>=13.7.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+job-chatbot = "job_chatbot.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/python/job_chatbot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src/python"]
+addopts = "-ra"
