@@ -1,70 +1,34 @@
 # Job-Search Chatbot — Agent Appendix
 
-This appendix layers a **multi-agent job-search chatbot** on top of the
-upstream `vteam-hybrid` template. The original `README.md` is kept
-verbatim; this file documents the additions in `src/python/job_chatbot/`.
+A multi-agent job-search chatbot layered on top of the `noodlefrenzy/vteam-hybrid`
+methodology template. The template's files (`README.md`, `CLAUDE.md`,
+`.claude/`, `docs/methodology/`, `samples/`, `scripts/`, etc.) are kept
+verbatim. This README documents the chatbot code that lives under
+`src/python/job_chatbot/`.
 
-> The user types something like
-> `get all jobs from PwC related to AI`
-> and the system runs four agents in sequence to scrape Workday, persist
-> the postings, and validate the output.
+---
 
-## The hybrid orchestration pattern
+## For Non-Technical Users
 
-`vteam-hybrid` emphasizes mixing modes of agent execution. This project
-splits the four agents along that line:
+The chatbot takes a company name and (optionally) some keywords, scrapes
+the company's public Workday careers site, and saves matching job
+postings to a CSV file plus a small SQLite database on your computer.
 
-```
-                          job-chatbot orchestrator
-                          (Anthropic SDK tool-use loop)
-                                     |
-        +----------------------------+----------------------------+
-        |                            |                            |
-   in-process                   in-process                    subprocess
-   CompanyConfirm                Scraper                      DB worker
-   (agents/company_confirm.py)   (agents/scraper.py)          (workers/db_worker.py)
-                                                                   |
-                                                              subprocess
-                                                              Tester worker
-                                                              (workers/tester_worker.py)
-```
+This is **separate from the template's methodology**. The Claude Code
+agent personas under `.claude/agents/` and the slash commands under
+`.claude/commands/` belong to `vteam-hybrid` itself — they have nothing
+to do with the chatbot. You can use the chatbot without ever touching
+them.
 
-| Agent          | Mode        | Lives in                                          | Responsibility |
-| -------------- | ----------- | ------------------------------------------------- | -------------- |
-| CompanyConfirm | in-process  | `src/python/job_chatbot/agents/company_confirm.py` | Normalizes a raw company string to a registered tenant. |
-| Scraper        | in-process  | `src/python/job_chatbot/agents/scraper.py`         | Calls Workday `/wday/cxs/{tenant}/{site}/jobs` with pagination. |
-| DB             | subprocess  | `src/python/job_chatbot/workers/db_worker.py`      | Reads postings from stdin, writes CSV + SQLite. |
-| Tester         | subprocess  | `src/python/job_chatbot/workers/tester_worker.py`  | Validates the CSV and exits non-zero on failure. |
+**Where to start:** read **[docs/USER-MANUAL.md](docs/USER-MANUAL.md)**
+for a full walkthrough — installation, example queries, where the
+results land, and troubleshooting.
 
-The orchestrator (`orchestrator.py`) exposes all four as Anthropic tools
-named `confirm_company`, `scrape_jobs`, `persist_jobs`, `validate_csv`.
-Tools 1+2 dispatch to local Python functions; tools 3+4 shell out via
-`subprocess.run([sys.executable, ...])`.
+**Prerequisites:** Python 3.11+, the [`uv`](https://github.com/astral-sh/uv)
+package manager, and (optional, only for `--chat` mode) an Anthropic API
+key.
 
-A deterministic `run_pipeline(...)` helper mirrors the LLM loop without
-any network calls — that path is used by `--chat`-less CLI runs and by
-the smoke tests.
-
-## Quickstart
-
-```bash
-cd /Users/rashmi/Documents/job/job-chatbot-vteam-hybrid
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev]"
-
-# Deterministic mode (calls Workday, but no LLM):
-job-chatbot PwC --keywords AI --limit 25
-
-# LLM mode (requires .env with ANTHROPIC_API_KEY):
-cp .env.example .env
-# ...edit .env...
-job-chatbot --chat "PwC" --keywords AI
-```
-
-CSV + SQLite artifacts land in `output/`.
-
-## Example session
+### Example session
 
 ```
 $ job-chatbot --chat "get all jobs from PwC related to AI"
@@ -83,63 +47,125 @@ Found 23 AI-related postings at PricewaterhouseCoopers. Saved to
 output/pwc_jobs.csv and output/pwc_jobs.db. Validation passed.
 ```
 
-## Supported companies (8)
+### Supported companies (8)
 
 - Adobe
 - Cisco
 - JPMorgan Chase
 - NVIDIA
 - Netflix
-- PricewaterhouseCoopers
+- PricewaterhouseCoopers (PwC)
 - Salesforce
 - Workday
 
-Aliases: `pwc`, `jpmc`, `chase`, `jp morgan`, `sfdc`, etc. See
-`src/python/job_chatbot/tools/companies.py`.
+Aliases such as `pwc`, `jpmc`, `chase`, `jp morgan`, `sfdc` are also
+accepted. See `src/python/job_chatbot/tools/companies.py`.
 
-## Layout (additions only)
+---
+
+## For Developers
+
+### Hybrid architecture in one paragraph
+
+An Anthropic SDK orchestrator (`orchestrator.py`) exposes four tools to
+Claude. Two of them — `confirm_company` and `scrape_jobs` — run
+**in-process** as plain Python function calls (the agents share the
+`Company` and `JobPosting` dataclasses, so passing data between them is
+free). The other two — `persist_jobs` and `validate_csv` — run as
+**subprocesses** via `subprocess.run([sys.executable, workers/<name>.py,
+...])`, communicating with the orchestrator over stdin/stdout JSON and
+exit codes. The same logic is also available as a deterministic
+`run_pipeline(...)` helper that bypasses the LLM and is used by the
+default CLI mode and the smoke tests.
+
+| Agent          | Mode        | File | Responsibility |
+| -------------- | ----------- | ---- | -------------- |
+| CompanyConfirm | in-process  | `agents/company_confirm.py` | Normalize a company string to a registered tenant. |
+| Scraper        | in-process  | `agents/scraper.py`         | Call Workday `/wday/cxs/{tenant}/{site}/jobs` with pagination. |
+| DB             | subprocess  | `workers/db_worker.py`      | Read postings from stdin; write CSV + SQLite. |
+| Tester         | subprocess  | `workers/tester_worker.py`  | Validate the CSV; exit non-zero on failure. |
+
+**Full architecture, sequence diagrams, data flow, failure modes,
+testing strategy, and extension points are in
+[docs/SYSTEM-DESIGN.md](docs/SYSTEM-DESIGN.md).**
+
+### Tech stack
+
+- Python 3.11+
+- [`anthropic`](https://pypi.org/project/anthropic/) SDK (tool-use loop)
+- [`httpx`](https://pypi.org/project/httpx/) (Workday client)
+- [`rich`](https://pypi.org/project/rich/) (terminal output)
+- [`python-dotenv`](https://pypi.org/project/python-dotenv/) (`.env` loading)
+- [`pytest`](https://pypi.org/project/pytest/) (smoke tests, offline)
+- Standard library: `argparse`, `csv`, `sqlite3`, `subprocess`, `json`, `re`
+
+### Code layout
 
 ```
 src/python/job_chatbot/
   __init__.py
   main.py                # CLI entry point (job-chatbot ...)
   orchestrator.py        # Anthropic tool-use loop + deterministic pipeline
-  models.py
+  models.py              # JobQuery, JobPosting dataclasses
   agents/
     __init__.py
     company_confirm.py   # in-process
     scraper.py           # in-process
   workers/
     __init__.py
-    db_worker.py         # subprocess worker (CSV + SQLite)
-    tester_worker.py     # subprocess worker (CSV validation)
+    db_worker.py         # subprocess (CSV + SQLite)
+    tester_worker.py     # subprocess (CSV validation)
   tools/
     __init__.py
     workday.py           # POST /wday/cxs/{tenant}/{site}/jobs
     companies.py         # 8-company registry + aliases
     storage.py           # write_csv / write_sqlite helpers
-tests/test_smoke.py      # No live network or LLM calls
-pyproject.toml           # Python package metadata
+tests/test_smoke.py      # 14 offline test cases
+pyproject.toml
 .env.example
 output/                  # gitignored
 ```
 
-The original `vteam-hybrid` files (CLAUDE.md, .claude/, docs/, samples/,
-scripts/, README.md, etc.) are unchanged.
+### Quickstart
 
-## Tests
+```bash
+cd /Users/rashmi/Documents/job/job-chatbot-vteam-hybrid
+uv venv
+uv pip install -e ".[dev]"
+
+# Deterministic mode (no LLM, hits Workday):
+uv run python -m job_chatbot.main PwC --keywords AI --limit 25
+
+# LLM mode (requires .env with ANTHROPIC_API_KEY):
+cp .env.example .env
+# ...edit .env...
+uv run python -m job_chatbot.main --chat PwC --keywords AI
+```
+
+CSV + SQLite artifacts land in `output/`.
+
+### Tests
 
 ```bash
 uv run pytest -q
 ```
 
-Tests are fully offline — the scraper is stubbed and no Anthropic API
-calls are made.
+All tests run offline — neither Workday nor Anthropic is contacted. The
+scraper is stubbed via a `scraper=` kwarg on `run_pipeline`, and the
+Anthropic loop is not exercised at all.
 
-## Workday details
+### Workday details
 
 * Endpoint: `POST {base_url}/wday/cxs/{tenant}/{site}/jobs`
 * Body: `{"appliedFacets":{}, "limit":20, "offset":0, "searchText":"..."}`
 * Pagination: stop on empty page or when `offset >= total`.
 * Job-id regex: `_([A-Z0-9-]+WD)(?:-\d+)?$` -> `_712616WD-2` becomes
   `712616WD`. This keeps duplicate listings from inflating counts.
+
+### Template relationship
+
+The original `vteam-hybrid` files (`CLAUDE.md`, `.claude/`, `docs/`
+methodology subfolders, `samples/`, `scripts/`, `README.md`, etc.) are
+**unchanged**. This appendix and the two docs under `docs/USER-MANUAL.md`
+and `docs/SYSTEM-DESIGN.md` are additive. Do not modify the template's
+`README.md` — it documents the template itself.
